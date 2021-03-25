@@ -33,7 +33,6 @@ void g(void) {
 
   id = ++x;
   while (true) {
-
     printf("G Thread id = %d, val = %d BEGINNING\n", id, ++i);
     uninterruptibleNanoSleep(0, 50000000);
     printf("G Thread id = %d, val = %d END\n", id, ++i);
@@ -41,14 +40,7 @@ void g(void) {
   }
 }
 
-void handle_sigint(int sig) {
-    printf("\nHere goes some interesting stuff\n");
-    signal(SIGINT, SIG_DFL);
-    raise(SIGINT);
-}
-
 int main(void) {
-    
     signal(SIGINT, handle_sigint);
     gtinit();		// initialize threads, see gthr.c
     gtgo(f);		// set f() as first thread

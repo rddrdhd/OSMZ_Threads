@@ -21,14 +21,28 @@ struct gt {
     Unused,
     Running,
     Ready,
-  }
+  } 
   st;
-  time_t t_start;
-  time_t t_end;
-  time_t t_run;
 
-  int t_is_running;
-  int t_is_waiting;
+  struct timeval t_start;
+  struct timeval t_stop;
+
+  struct {
+      long sum;
+      long min;
+      long max;
+      long count;
+  } 
+  wait_time;
+
+  struct {
+      long sum;
+      long min;
+      long max;
+      long count;
+  } 
+  run_time;
+
 };
 
 void gtinit(void);				// initialize gttbl
@@ -40,3 +54,5 @@ int gtgo(void( * f)(void));		// create new thread and set f as new "run" functio
 void resetsig(int sig);			// reset signal
 void gthandle(int sig);			// periodically triggered by alarm
 int uninterruptibleNanoSleep(time_t sec, long nanosec);	// uninterruptible sleep
+void handle_sigint(int sig); // print info 
+double time_diff(struct timeval x, struct timeval y); // helper func
