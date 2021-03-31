@@ -43,9 +43,9 @@ void g(void) {
 int main(void) {
     signal(SIGINT, handle_sigint);
     gtinit();		// initialize threads, see gthr.c
-    gtgo(f);		// set f() as first thread
-    gtgo(f);		// set f() as second thread
-    gtgo(g);		// set g() as third thread
-    gtgo(g);		// set g() as fourth thread
+    gtgo(f, 1);		// set f() as first thread
+    gtgo(f, 4);		// set f() as second thread
+    gtgo(g,3 );		// set g() as third thread
+    gtgo(g, 8);		// set g() as fourth thread
     gtret(1);		// wait until all threads terminate
 }
