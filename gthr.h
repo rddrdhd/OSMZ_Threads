@@ -50,6 +50,7 @@ struct gt {
     RR,
     PRI,
     LS,
+    UNDEFINED,
   } 
   mode;
 
