@@ -46,9 +46,16 @@ struct gt {
   int priority;
   int starvingCount;
 
+  enum {
+    RR,
+    PRI,
+    LS,
+  } 
+  mode;
+
 };
 
-void gtinit();				// initialize gttbl
+void gtinit(char* mode);				// initialize gttbl
 void gtret(int ret);			// terminate thread
 void gtswtch(struct gtctx * old, struct gtctx * new);	// declaration from gtswtch.S
 bool gtyield(void);				// yield and switch to another thread

@@ -40,9 +40,10 @@ void g(void) {
   }
 }
 
-int main(void) {
+int main(int argc, char* argv[]) {
+    char *mode = argv[1];
     signal(SIGINT, handle_sigint);
-    gtinit();		// initialize threads, see gthr.c
+    gtinit(mode);		// initialize threads, see gthr.c
     gtgo(f, 5);		// set f() as first thread
     gtgo(f, 1);		// set f() as second thread
     gtgo(g, 9);		// set g() as third thread
