@@ -15,7 +15,7 @@
 
 static int LOWEST_PRIORITY = 10; // for PRI mode
 static int HIGHEST_PRIORITY = 0; // for PRI mode
-static int HIGHEST_TICKET = 100; // for LS mode
+static int HIGHEST_TICKET = 10000; // for LS mode
 
 // function triggered periodically by timer (SIGALRM)
 void gthandle(int sig) {
@@ -79,11 +79,10 @@ void recalculate_tickets(int process_count, int priority_weights_sum) {
         last_bound = t->lottery_bound;
         t++;
 
-
         priority_weight = ((LOWEST_PRIORITY + 1)) - t->priority;
         weight = (int)(((float)priority_weight / (float)priority_weights_sum) * (float)HIGHEST_TICKET);
         t->lottery_bound = last_bound + weight;
-        //printf("\tbound:\t%d,\tweight:\t%d\n", t->lottery_bound, weight);
+        printf("\tbound:\t%d,\tweight:\t%d\n", t->lottery_bound, weight);
     }
 }
 
@@ -95,14 +94,15 @@ bool gtyield(void) {
 
     resetsig(SIGALRM);			// reset signal
 
-    p = gtcur;
+   
     bool found = false;
     int winning_ticket;
 
     switch(gttbl[0].mode){      // mode set only in main thread
 
-        // Round Robin mode
+        /* Round Robin mode */
         case RR:
+            p = gtcur;
             while (!found) {			    // iterate through gttbl[] until we find new thread in state Ready 
                 if (++p == &gttbl[MaxGThreads])	    // at the end rotate to the beginning
                     p = &gttbl[0];
@@ -113,8 +113,9 @@ bool gtyield(void) {
             }
             break;
 
-        // Round Robin with priorities mode
+        /* Round Robin with priorities mode */
         case PRI:
+            p = gtcur;
             for (int i = HIGHEST_PRIORITY; ((i <= LOWEST_PRIORITY) && !found); i++) {  // 0 = highest priority, 10 = lowest
                 while (!found) {
                     if (++p == &gttbl[MaxGThreads]) {	                // at the end rotate to the beginning
@@ -142,28 +143,22 @@ bool gtyield(void) {
             }
             break; 
 
-        // Loterry scheduling mode
+        /* Loterry scheduling mode */
         case LS:
             p = &gttbl[0];
             winning_ticket = get_random_num(0, HIGHEST_TICKET);
             
             while (!found) {
-                int last_bound = p->lottery_bound;
+                //int last_bound = p->lottery_bound;
                 if (++p == &gttbl[MaxGThreads])	    
                     return false;
 
-                if (winning_ticket <= p->lottery_bound){ // i found the process with winning ticket
-                    //TODO: Nechce mi to opakovane spoustet ty thready, proste hleda dal
-                   // printf("%02d < %02d < %02d", last_bound, winning_ticket, p->lottery_bound);
-                    if (p->st == Ready) {
-                     //   printf("\tpriorty %d ready!\n",p->priority);
+                if (winning_ticket <= p->lottery_bound){
+                    //printf("%02d < %02d < %02d", last_bound, winning_ticket, p->lottery_bound);
+                    if (p->st == Ready || p->st == Running) {
+                        //printf("\tpriorty %d ready!\n",p->priority);
                         found = true;
                         break;
-                    }
-
-                   if (!found) {
-                        winning_ticket = get_random_num(0, HIGHEST_TICKET); // give it another try - can be rounding mistake (floor of bounds) too
-                     //   printf("\tpriorty %d NOT ready!\n", p->priority);
                     }
                 }
             }
@@ -175,7 +170,6 @@ bool gtyield(void) {
             return 0;
             break;
     }
-
 
     struct timeval current_time;
     gettimeofday(&current_time, NULL);
@@ -256,22 +250,17 @@ int gtgo(void( * f)(void), int priority) {
       int priority_weights_sum = 0;
       struct gt* c;
 
-      // count used slots in table
-      for (c = &gttbl[1];; c++) { //
+      for (c = &gttbl[1];; c++) { // count used slots in table
           if (c->st != Unused) {
               priority_weights_sum += ((LOWEST_PRIORITY+1) - c->priority);
               process_count++;
-          }
-          else {
+          } else {
               break;
           }
       }
-     // printf("### processes count: %d, priority weights sum: %d ################\n", process_count, priority_weights_sum);
+      printf("################ processes count: %d, priority weights sum: %d ################\n", process_count, priority_weights_sum);
 
       recalculate_tickets(process_count, priority_weights_sum);
-
-      //p->lottery_bound = ((LOWEST_PRIORITY+1) - p->priority)*10;
-      //printf("New Lottery bound: %d", p->lottery_bound);
   }
 
   p->wait_time.sum = 0;
@@ -283,7 +272,6 @@ int gtgo(void( * f)(void), int priority) {
   p->run_time.max = 0;
   p->run_time.count = 0;
   p->starvingCount = 0;
-
   struct timeval current_time;
   gettimeofday(&current_time, NULL);
   p->t_stop = current_time;
@@ -327,15 +315,16 @@ int uninterruptibleNanoSleep(time_t sec, long nanosec) {
 
 // output stuff
 void handle_sigint(int sig) {
+
+    struct gt* p;
     char *mode_label;
     int mode_value;
+
     if (gttbl[0].mode == LS) {
         mode_label = " TIX ";
-    }
-    else {
+    } else {
         mode_label = "PRIOR";
     }
-    struct gt* p;
     printf("\n\n|      THREAD    |\t\tRUN TIME (ms)\t\t|\t\tWAIT TIME (ms)\t\t|\n");
     printf("|----------------|--------------------------------------|---------------------------------------|\n");
     printf("|   ID\t | %s |      SUM\t|  AVG\t|  MIN\t|  MAX\t|      SUM\t|  AVG\t|  MIN\t|  MAX\t|\n", mode_label);
@@ -344,22 +333,17 @@ void handle_sigint(int sig) {
         p = &gttbl[i];
         if (i > 0) {
             if (gttbl[0].mode == LS) {
-
                 int last_bound = gttbl[i - 1].lottery_bound;
                 mode_value = p->lottery_bound - last_bound; // how much tickets does it have
-
-            }
-            else {
+            } else {
                 mode_value = p->priority;
             }
-        }
-        else {
+        } else {
             mode_value = p->lottery_bound; // how much tickets does it have
-
         }
         
         
-        printf("| %d\t | %d\t | %06.3f\t| %0.3f\t| %0.3f\t| %0.3f\t| %06.3f\t| %0.3f\t| %0.3f\t| %0.3f |\n",
+        printf("| %d\t | %d\t | %6.2f\t| %05.2f\t| %05.2f\t| %05.2f\t| %6.2f\t| %05.2f\t| %05.2f\t| %05.2f |\n",
             i, 
             mode_value,
             (float)p->run_time.sum/1000,

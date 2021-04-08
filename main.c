@@ -50,15 +50,14 @@ int main(int argc, char* argv[]) {
     if (argc == 2) {
         char* mode = argv[1];
         signal(SIGINT, handle_sigint);
-        gtinit(mode);		// initialize threads, see gthr.c
-        gtgo(f, 8);		// set f() as first thread
-        gtgo(f, 5);		// set f() as second thread
+        gtinit(mode);	// initialize threads, see gthr.c
+        gtgo(f, 5);		// set f() as first thread
+        gtgo(f, 10);	// set f() as second thread
         gtgo(g, 2);		// set g() as third thread
         gtgo(g, 0);		// set g() as fourth thread
         gtret(1);		// wait until all threads terminate
-    }
-    else {
+    } else {
         printf(" Use one of those args: \n\t'RR' for round robin,\n\t'PRI' for prioritized round robin,\n\t'LS' for lottery scheduling\n\n");
-            return 0;
+        return 0;
     }
 }
