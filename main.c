@@ -19,9 +19,9 @@ void f(void) {
   id = ++x;
   while (true) {
 
-    printf("F Thread id = %d, val = %d BEGINNING\n", id, ++i);
+    printf("F Thread id = %d, val = %02d BEGINNING\n", id, ++i);
     uninterruptibleNanoSleep(0, 50000000);
-    printf("F Thread id = %d, val = %d END\n", id, ++i);
+    printf("F Thread id = %d, val = %02d END\n", id, ++i);
     uninterruptibleNanoSleep(0, 50000000);
   }
 }
@@ -33,9 +33,9 @@ void g(void) {
 
   id = ++x;
   while (true) {
-    printf("G Thread id = %d, val = %d BEGINNING\n", id, ++i);
+    printf("G Thread id = %d, val = %02d BEGINNING\n", id, ++i);
     uninterruptibleNanoSleep(0, 50000000);
-    printf("G Thread id = %d, val = %d END\n", id, ++i);
+    printf("G Thread id = %d, val = %02d END\n", id, ++i);
     uninterruptibleNanoSleep(0, 50000000);
   }
 }
@@ -45,14 +45,16 @@ void clean_exit_on_sig(int sig_num) {
 }
 
 int main(int argc, char* argv[]) {
+
+    srand(time(0)); //to generate different lottery numbers every run
     if (argc == 2) {
         char* mode = argv[1];
         signal(SIGINT, handle_sigint);
         gtinit(mode);		// initialize threads, see gthr.c
-        gtgo(f, 5);		// set f() as first thread
-        gtgo(f, 1);		// set f() as second thread
-        gtgo(g, 9);		// set g() as third thread
-        gtgo(g, 2);		// set g() as fourth thread
+        gtgo(f, 8);		// set f() as first thread
+        gtgo(f, 5);		// set f() as second thread
+        gtgo(g, 2);		// set g() as third thread
+        gtgo(g, 0);		// set g() as fourth thread
         gtret(1);		// wait until all threads terminate
     }
     else {

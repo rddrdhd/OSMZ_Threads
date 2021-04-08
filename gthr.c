@@ -13,12 +13,17 @@
 #include "gthr.h"
 #include "gthr_struct.h"
 
-static int LOWEST_PRIORITY = 10;
-static int HIGHEST_PRIORITY = -5;
+static int LOWEST_PRIORITY = 10; // for PRI mode
+static int HIGHEST_PRIORITY = 0; // for PRI mode
+static int HIGHEST_TICKET = 100; // for LS mode
 
 // function triggered periodically by timer (SIGALRM)
 void gthandle(int sig) {
     gtyield();
+}
+
+int get_random_num(int lower, int upper) {
+    return (rand() % (upper - lower + 1)) + lower;
 }
 
 // initialize first thread as current context
@@ -27,6 +32,7 @@ void gtinit(char mode[]) {
     gettimeofday(&current_time, NULL);
     gtcur = &gttbl[0];			// initialize current thread with thread #0
     gtcur->st = Running;		// set current to running
+
     gtcur->wait_time.sum = 0;
     gtcur->wait_time.min = 0;
     gtcur->wait_time.max = 0;
@@ -35,9 +41,9 @@ void gtinit(char mode[]) {
     gtcur->run_time.min = 0;
     gtcur->run_time.max = 0;
     gtcur->run_time.count = 0;
-    gtcur->starvingCount = 0;
     gtcur->t_stop = current_time;
     gtcur->t_start = current_time;
+    gtcur->lottery_bound = 0;
 
     // set mode from main() args
     if (strcmp(mode, "PRI") == 0)
@@ -63,6 +69,24 @@ void __attribute__((noreturn)) gtret(int ret) {
     exit(ret);
 }
 
+// func for LS mode
+void recalculate_tickets(int process_count, int priority_weights_sum) {
+    struct gt* t = &gttbl[0];
+    int priority_weight, last_bound, weight;
+    t->lottery_bound = 0;
+
+    while (t != &gttbl[process_count]) { // iterating only used slots
+        last_bound = t->lottery_bound;
+        t++;
+
+
+        priority_weight = ((LOWEST_PRIORITY + 1)) - t->priority;
+        weight = (int)(((float)priority_weight / (float)priority_weights_sum) * (float)HIGHEST_TICKET);
+        t->lottery_bound = last_bound + weight;
+        //printf("\tbound:\t%d,\tweight:\t%d\n", t->lottery_bound, weight);
+    }
+}
+
 // switch from one thread to other
 bool gtyield(void) {
 
@@ -73,8 +97,22 @@ bool gtyield(void) {
 
     p = gtcur;
     bool found = false;
+    int winning_ticket;
 
-    switch(gttbl[0].mode){ // mode set only in main thread
+    switch(gttbl[0].mode){      // mode set only in main thread
+
+        // Round Robin mode
+        case RR:
+            while (!found) {			    // iterate through gttbl[] until we find new thread in state Ready 
+                if (++p == &gttbl[MaxGThreads])	    // at the end rotate to the beginning
+                    p = &gttbl[0];
+                if (p->st == Ready)
+                    found = true;
+                if (p == gtcur)						// did not find any other Ready threads
+                    return false;
+            }
+            break;
+
         // Round Robin with priorities mode
         case PRI:
             for (int i = HIGHEST_PRIORITY; ((i <= LOWEST_PRIORITY) && !found); i++) {  // 0 = highest priority, 10 = lowest
@@ -88,8 +126,7 @@ bool gtyield(void) {
                             found = true;
                             p->starvingCount = 0;                       // reset starving count after thread is found
                             break;
-                        }
-                        else {
+                        } else {
                             p->starvingCount++;
                         }
                     }
@@ -99,32 +136,46 @@ bool gtyield(void) {
                     }
                 }
             }
-            break;
-        // Loterry scheduling mode
-        case LS: 
-            printf("WIP: lottery scheduling\n");
-            return 0;
-            break;
-        // Round Robin mode
-        case RR: 
-            while (!found) {			    // iterate through gttbl[] until we find new thread in state Ready 
-                if (++p == &gttbl[MaxGThreads])	    // at the end rotate to the beginning
-                    p = &gttbl[0];
-                if (p->st == Ready)
-                    found = true;
-                if (p == gtcur)						// did not find any other Ready threads
-                    return false;
+
+            if (p == gtcur) {
+                return false; // did not find any other Ready threads
             }
+            break; 
+
+        // Loterry scheduling mode
+        case LS:
+            p = &gttbl[0];
+            winning_ticket = get_random_num(0, HIGHEST_TICKET);
+            
+            while (!found) {
+                int last_bound = p->lottery_bound;
+                if (++p == &gttbl[MaxGThreads])	    
+                    return false;
+
+                if (winning_ticket <= p->lottery_bound){ // i found the process with winning ticket
+                    //TODO: Nechce mi to opakovane spoustet ty thready, proste hleda dal
+                   // printf("%02d < %02d < %02d", last_bound, winning_ticket, p->lottery_bound);
+                    if (p->st == Ready) {
+                     //   printf("\tpriorty %d ready!\n",p->priority);
+                        found = true;
+                        break;
+                    }
+
+                   if (!found) {
+                        winning_ticket = get_random_num(0, HIGHEST_TICKET); // give it another try - can be rounding mistake (floor of bounds) too
+                     //   printf("\tpriorty %d NOT ready!\n", p->priority);
+                    }
+                }
+            }
+
             break;
+
         default:
-            printf(" Use one of those args: RR, PRI, LS\n");
+            printf(" Use one of those args: \n\t'RR' for round robin,\n\t'PRI' for prioritized round robin,\n\t'LS' for lottery scheduling\n\n");
             return 0;
             break;
     }
 
-    if (p == gtcur) { 
-        return false; // did not find any other Ready threads
-    }
 
     struct timeval current_time;
     gettimeofday(&current_time, NULL);
@@ -184,8 +235,6 @@ int gtgo(void( * f)(void), int priority) {
     else if (p->st == Unused)
     break;								// new slot was found
 
- 
-
   stack = malloc(StackSize);			// allocate memory for stack of newly created thread
   if (!stack)
     return -1;
@@ -195,10 +244,35 @@ int gtgo(void( * f)(void), int priority) {
   p->ctx.rsp = (uint64_t) & stack[StackSize - 16];			    //  set stack pointer
   
   p->st = Ready;	                                            //  set state
-  if (priority >= HIGHEST_PRIORITY && priority <= LOWEST_PRIORITY)
-      p->priority = priority;
-  else 
-      p->priority = LOWEST_PRIORITY;
+  if (gttbl[0].mode == PRI || gttbl[0].mode == LS) {
+    if (priority >= HIGHEST_PRIORITY && priority <= LOWEST_PRIORITY)
+        p->priority = priority;
+    else
+        p->priority = LOWEST_PRIORITY;
+  }
+ 
+  if (gttbl[0].mode == LS) {
+      int process_count = 0;
+      int priority_weights_sum = 0;
+      struct gt* c;
+
+      // count used slots in table
+      for (c = &gttbl[1];; c++) { //
+          if (c->st != Unused) {
+              priority_weights_sum += ((LOWEST_PRIORITY+1) - c->priority);
+              process_count++;
+          }
+          else {
+              break;
+          }
+      }
+     // printf("### processes count: %d, priority weights sum: %d ################\n", process_count, priority_weights_sum);
+
+      recalculate_tickets(process_count, priority_weights_sum);
+
+      //p->lottery_bound = ((LOWEST_PRIORITY+1) - p->priority)*10;
+      //printf("New Lottery bound: %d", p->lottery_bound);
+  }
 
   p->wait_time.sum = 0;
   p->wait_time.min = 0;
@@ -253,16 +327,41 @@ int uninterruptibleNanoSleep(time_t sec, long nanosec) {
 
 // output stuff
 void handle_sigint(int sig) {
+    char *mode_label;
+    int mode_value;
+    if (gttbl[0].mode == LS) {
+        mode_label = " TIX ";
+    }
+    else {
+        mode_label = "PRIOR";
+    }
     struct gt* p;
     printf("\n\n|      THREAD    |\t\tRUN TIME (ms)\t\t|\t\tWAIT TIME (ms)\t\t|\n");
     printf("|----------------|--------------------------------------|---------------------------------------|\n");
-    printf("|   ID\t | PRIOR |      SUM\t|  AVG\t|  MIN\t|  MAX\t|      SUM\t|  AVG\t|  MIN\t|  MAX\t|\n");
+    printf("|   ID\t | %s |      SUM\t|  AVG\t|  MIN\t|  MAX\t|      SUM\t|  AVG\t|  MIN\t|  MAX\t|\n", mode_label);
     printf("|--------|-------|--------------|-------|-------|-------|---------------|-------|-------|-------|\n");
     for (int i = 1; i < MaxGThreads; i++) {
         p = &gttbl[i];
+        if (i > 0) {
+            if (gttbl[0].mode == LS) {
+
+                int last_bound = gttbl[i - 1].lottery_bound;
+                mode_value = p->lottery_bound - last_bound; // how much tickets does it have
+
+            }
+            else {
+                mode_value = p->priority;
+            }
+        }
+        else {
+            mode_value = p->lottery_bound; // how much tickets does it have
+
+        }
+        
+        
         printf("| %d\t | %d\t | %06.3f\t| %0.3f\t| %0.3f\t| %0.3f\t| %06.3f\t| %0.3f\t| %0.3f\t| %0.3f |\n",
             i, 
-            (gttbl[0].mode==PRI)?p->priority:0,
+            mode_value,
             (float)p->run_time.sum/1000,
             (float)(p->run_time.sum/p->run_time.count)/1000,
             (float)p->run_time.min/1000,

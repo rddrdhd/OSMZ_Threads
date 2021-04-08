@@ -16,24 +16,15 @@ struct gt {
     uint64_t rbp;
   }
   ctx;
-  // Thread state
   enum {
     Unused,
     Running,
     Ready,
   } 
-  st;
+  st; // Thread state
 
-  struct timeval t_start;
-  struct timeval t_stop;
-
-  struct {
-      long sum;
-      long min;
-      long max;
-      long count;
-  } 
-  wait_time;
+  struct timeval t_start; // time of last start
+  struct timeval t_stop; // time of last stop
 
   struct {
       long sum;
@@ -41,10 +32,18 @@ struct gt {
       long max;
       long count;
   } 
-  run_time;
+  wait_time; // struct for computing wait time
 
-  int priority;
-  int starvingCount;
+  struct {
+      long sum;
+      long min;
+      long max;
+      long count;
+  } 
+  run_time; // struct for computing run time
+
+  int priority; // priority used only in PRI and LS mode
+  int starvingCount; // starvingCount only used in PRI mode
 
   enum {
     RR,
@@ -52,8 +51,9 @@ struct gt {
     LS,
     UNDEFINED,
   } 
-  mode;
+  mode; // mode is only set to main thread
 
+  int lottery_bound; 
 };
 
 void gtinit(char* mode);				// initialize gttbl
